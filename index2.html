@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>翻轉卡片｜鍵盤操作</title>
+<style>
+:root {
+  --card-w: 14.85cm;
+  --card-h: 5.25cm;
+}
+body {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: #f2f4f7;
+  padding: 20px 80px 20px 40px;
+  gap: 40px;
+}
+.scene { perspective: 1000px; }
+.zoom-wrap { transform-origin: center center; }
+.card {
+  width: var(--card-w);
+  height: var(--card-h);
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.8s ease;
+  border-radius: 12px;
+  box-shadow: 0 12px 24px rgba(0,0,0,0.2);
+  background: white;
+}
+.card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  font-size: 22px;
+}
+.card-front { background: #fff; }
+.card-back {
+  background: #4a90e2;
+  color: #fff;
+  transform: rotateY(180deg);
+}
+.card-face img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* 控制列 */
+.controls {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(255,255,255,0.95);
+  padding: 12px;
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  z-index: 1000;
+  align-items: center;
+}
+.zoom-wrap { display: inline-block; width: var(--card-w); height: var(--card-h); }
+.zoom-wrap .card { width: 100%; height: 100%; }
+button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+  transition: background 0.2s;
+}
+button:hover { background: #eee; }
+label { font-size: 12px; color: #333; text-align: center; }
+input[type="range"], select { width: 100px; font-size: 12px; }
+.move-controls {
+  display: grid;
+  grid-template-columns: 40px 40px 40px;
+  grid-template-rows: 40px 40px 40px;
+  gap: 5px;
+  justify-content: center;
+  align-items: center;
+}
+.move-controls button { width: 40px; height: 40px; padding: 0; }
+.move-controls .empty { visibility: hidden; }
+</style>
+</head>
+<body>
+
+<div class="scene">
+  <div class="zoom-wrap" id="zoomWrap">
+    <div class="card" id="card">
+      <div class="card-face card-front"></div>
+      <div class="card-face card-back"></div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="flipBtn">翻轉：z</button>
+  <button id="prevBtn">上一張：x</button>
+  <button id="nextBtn">下一張：c</button>
+  <button id="rotateBtn">旋轉90°：v</button>
+  <button id="resetBtn">回正：b</button>
+  <label>縮放：n,m<br><input id="zoomSlider" type="range" min="0.5" max="2" step="0.1" value="1"></label>
+  <label>選擇卡片<br><select id="cardSelector"></select></label>
+
+  <div class="move-controls">
+    <div class="empty"></div>
+    <button id="upBtn">↑</button>
+    <div class="empty"></div>
+    <button id="leftBtn">←</button>
+    <div class="empty"></div>
+    <button id="rightBtn">→</button>
+    <div class="empty"></div>
+    <button id="downBtn">↓</button>
+    <div class="empty"></div>
+  </div>
+</div>
+
+<script>
+const card = document.getElementById('card');
+const zoomWrap = document.getElementById('zoomWrap');
+const flipBtn = document.getElementById('flipBtn');
+const nextBtn = document.getElementById('nextBtn');
+const prevBtn = document.getElementById('prevBtn');
+const rotateBtn = document.getElementById('rotateBtn');
+const resetBtn = document.getElementById('resetBtn');
+const zoomSlider = document.getElementById('zoomSlider');
+const cardSelector = document.getElementById('cardSelector');
+
+const upBtn = document.getElementById('upBtn');
+const downBtn = document.getElementById('downBtn');
+const leftBtn = document.getElementById('leftBtn');
+const rightBtn = document.getElementById('rightBtn');
+
+let currentIndex = 0;
+let flipAngle = 0;
+let rotZ = 0;
+let scale = 1;
+let posX = 0;
+let posY = 0;
+
+const cardsData = [];
+for(let i=1;i<=38;i+=2){
+  cardsData.push({ front: `<img src='tickets/${i}.png'>`, back: `<img src='tickets/${i+1}.png'>` });
+}
+
+function updateCard(index){
+  card.querySelector('.card-front').innerHTML = cardsData[index].front;
+  card.querySelector('.card-back').innerHTML = cardsData[index].back;
+  cardSelector.value = index;
+}
+
+function applyTransform(){
+  card.style.transform = `translate(${posX}px, ${posY}px) rotateZ(${rotZ}deg) rotateY(${flipAngle}deg)`;
+  zoomWrap.style.width = `calc(var(--card-w) * ${scale})`;
+  zoomWrap.style.height = `calc(var(--card-h) * ${scale})`;
+}
+
+function resetTransform(){
+  flipAngle = 0; rotZ = 0; scale = 1; posX = 0; posY = 0;
+  zoomSlider.value = 1;
+  applyTransform();
+}
+
+// 按鈕事件
+flipBtn.addEventListener('click', ()=>{ flipAngle += 180; applyTransform(); });
+rotateBtn.addEventListener('click', ()=>{ rotZ += 90; applyTransform(); });
+resetBtn.addEventListener('click', ()=>{ resetTransform(); });
+zoomSlider.addEventListener('input', ()=>{ scale = parseFloat(zoomSlider.value); applyTransform(); });
+nextBtn.addEventListener('click', ()=>{ currentIndex = (currentIndex + 1) % cardsData.length; updateCard(currentIndex); applyTransform(); });
+prevBtn.addEventListener('click', ()=>{ currentIndex = (currentIndex - 1 + cardsData.length) % cardsData.length; updateCard(currentIndex); applyTransform(); });
+
+// 下拉選單
+cardsData.forEach((_, i)=>{
+  const option = document.createElement('option');
+  option.value = i;
+  option.textContent = `卡片 ${i+1}`;
+  cardSelector.appendChild(option);
+});
+cardSelector.addEventListener('change', (e)=>{
+  currentIndex = parseInt(e.target.value);
+  updateCard(currentIndex);
+  applyTransform();
+});
+
+// 移動
+const step = 20;
+upBtn.addEventListener('click', ()=>{ posY -= step; applyTransform(); });
+downBtn.addEventListener('click', ()=>{ posY += step; applyTransform(); });
+leftBtn.addEventListener('click', ()=>{ posX -= step; applyTransform(); });
+rightBtn.addEventListener('click', ()=>{ posX += step; applyTransform(); });
+
+// 鍵盤操作
+document.addEventListener('keydown', (e)=>{
+  const key = e.key.toLowerCase();
+  switch(key){
+    case 'z': flipAngle += 180; break;
+    case 'x': currentIndex = (currentIndex - 1 + cardsData.length) % cardsData.length; updateCard(currentIndex); break;
+    case 'c': currentIndex = (currentIndex + 1) % cardsData.length; updateCard(currentIndex); break;
+    case 'v': rotZ += 90; break;
+    case 'b': resetTransform(); return;
+    case 'n': scale = Math.max(0.1, scale - 0.1); zoomSlider.value = scale; break;
+    case 'm': scale = Math.min(5, scale + 0.1); zoomSlider.value = scale; break;
+    case 'arrowup': posY -= step; break;
+    case 'arrowdown': posY += step; break;
+    case 'arrowleft': posX -= step; break;
+    case 'arrowright': posX += step; break;
+  }
+  applyTransform();
+});
+
+// 初始化
+updateCard(currentIndex);
+applyTransform();
+</script>
+
+</body>
+</html>
